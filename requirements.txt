@@ -1,1 +1,7 @@
+tensorflow>=2.15.0
+keras
+pillow
+matplotlib
+pandas
+requests
 python-dotenv

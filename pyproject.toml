@@ -27,9 +27,12 @@ license = "MIT"
 authors = [{ name = "Seu nome", email = "seu@email.com" }]
 requires-python = ">=3.12"
 dependencies = [
+    "matplotlib>=3.11.2",
     "pandas>=3.0.6",
+    "pillow>=12.3.0",
     "python-dotenv>=1.1.0",
     "requests>=2.34.2",
+    "tensorflow>=2.21.0",
 ]
 
 [project.urls]
