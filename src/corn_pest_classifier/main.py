@@ -24,8 +24,11 @@ def main():
     print("1. Construindo o Dataset...")
     train_ds, val_ds = build_dataset()
 
-    print("2. Instanciando a Arquitetura Customizada (Nível 2)...")
-    model = build_custom_mobilenet(num_classes=NUM_CLASSES)
+    # Detecta automaticamente o número real de classes do dataset
+    class_names = getattr(train_ds, "class_names", [])
+    qtd_classes = len(class_names) if class_names else NUM_CLASSES
+    print(f"2. Instanciando a Arquitetura Customizada para {qtd_classes} classes...")
+    model = build_custom_mobilenet(num_classes=qtd_classes)
     model.summary() # Exibe a arquitetura algébrica no console
 
     print("3. Iniciando o Loop de Treinamento Customizado (Nível 1)...")

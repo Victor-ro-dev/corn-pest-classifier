@@ -8,7 +8,7 @@ class CustomTrainer:
     def __init__(self, model, learning_rate: float):
         self.model = model
         self.loss_fn = keras.losses.SparseCategoricalCrossentropy()
-        self.optimizer = keras.optimizers.Adam(learning_rate=learning_rate)
+        self.optimizer = keras.optimizers.Adam(learning_rate=learning_rate, clipnorm=1.0)
         # Métricas de acompanhamento
         self.train_acc_metric = keras.metrics.SparseCategoricalAccuracy()
         self.val_acc_metric = keras.metrics.SparseCategoricalAccuracy()
