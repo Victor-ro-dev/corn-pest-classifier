@@ -10,15 +10,14 @@ import keras
 import tensorflow as tf
 
 try:
-    from corn_pest_classifier.config import BATCH_SIZE, DATASET_DIR, IMG_SIZE
+    from corn_pest_classifier.config import BATCH_SIZE, CLASS_NAMES, DATASET_DIR, IMG_SIZE
 except ImportError:
-    from config import BATCH_SIZE, DATASET_DIR, IMG_SIZE
+    from config import BATCH_SIZE, CLASS_NAMES, DATASET_DIR, IMG_SIZE
 
 
 def build_dataset(dataset_dir: str | None = None):
     target_dir = dataset_dir or DATASET_DIR
 
-    # Conversor -> M3D
     train_ds, val_ds = keras.utils.image_dataset_from_directory(
         target_dir,
         validation_split=0.2,
@@ -30,11 +29,11 @@ def build_dataset(dataset_dir: str | None = None):
 
     class_names = getattr(train_ds, "class_names", [])
     print(f"Classes identificadas no dataset ({len(class_names)}): {class_names}")
-    if len(class_names) < 2:
+    faltantes = [c for c in CLASS_NAMES if c not in class_names]
+    if faltantes:
         print(
-            f"\n[AVISO CRÍTICO] Foi encontrada apenas {len(class_names)} classe no diretório '{target_dir}'. "
-            "Para treinar um classificador binário, garanta subpastas separadas "
-            "(ex.: 'dataset/praga' e 'dataset/saudavel').\n"
+            f"[AVISO] Classes esperadas do projeto ausentes no diretório: {faltantes}\n"
+            f"Classes oficiais esperadas ({len(CLASS_NAMES)}): {CLASS_NAMES}"
         )
 
     # Data Augmentation

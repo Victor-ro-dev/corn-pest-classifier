@@ -30,16 +30,15 @@ except ImportError:
 
 GBIF = "https://api.gbif.org/v1"
 
-# Mapeamento das classes para os nomes científicos aceitos no GBIF
+# Mapeamento das pragas do milho coletadas via GBIF
 CLASSES_DEFAULT = {
     "lagarta_cartucho": "Spodoptera frugiperda",
     "lagarta_espiga": "Helicoverpa zea",
     "vaquinha": "Diabrotica speciosa",
-    "lagarta_elasmo": "Elasmopalpus lignosella",
 }
 
 # Estágios de vida: lagartas são larvas; vaquinha é o besouro adulto
-LIFE_STAGE_LARVA = {"lagarta_cartucho", "lagarta_espiga", "lagarta_elasmo"}
+LIFE_STAGE_LARVA = {"lagarta_cartucho", "lagarta_espiga"}
 LIFE_STAGES_ACEITOS = ["Larva", "Caterpillar", "Immature"]
 
 # Licenças padrão permitidas para redistribuição comercial/aberta
@@ -185,16 +184,16 @@ def main():
     )
     parser.add_argument(
         "--saida",
-        default="dataset/praga",
-        help="Diretório onde salvar as imagens (padrão: 'dataset/praga')",
+        default="dataset",
+        help="Diretório onde salvar as imagens (padrão: 'dataset', gerando dataset/<classe>/)",
     )
     parser.add_argument(
         "--modo",
-        choices=["binario", "subpastas"],
-        default="binario",
+        choices=["subpastas", "binario"],
+        default="subpastas",
         help=(
-            "'binario': salva tudo na pasta de saída com prefixo da classe (ex.: lagarta_cartucho_123_0.jpg), "
-            "ideal para dataset/praga. 'subpastas': cria subpastas para cada classe (ex.: dataset/praga/lagarta_cartucho/)."
+            "'subpastas': cria subpastas para cada classe (ex.: dataset/lagarta_cartucho/), "
+            "ideal para o classificador multiclasse. 'binario': salva tudo na pasta informada com prefixo."
         ),
     )
     parser.add_argument(

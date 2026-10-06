@@ -74,28 +74,45 @@ pip install -r requirements.txt
 
 ---
 
-## 🗂️ Preparação do Dataset
+## 🗂️ Preparação do Dataset (Cultura: Milho)
 
-O classificador foi projetado para classificação supervisionada. Certifique-se de que a pasta `dataset/` possua ao menos duas subpastas:
+O classificador foi projetado especificamente para a cultura do **milho** (escopo do semestre), organizado nas 4 classes oficiais:
 
+| Classe | Por que entra | Dataset alvo (pós-limpeza) | Fonte |
+| :--- | :--- | :--- | :--- |
+| **`lagarta_cartucho`** | Praga nº 1 para quem planta sem semente Bt | ~2.943 amostras | GBIF (larvas) + KaraAgro AI Maize (recortes) |
+| **`lagarta_espiga`** | Decisiva para milho verde de feira | ~351 amostras | GBIF (larvas, incl. CC BY-NC para treino local) |
+| **`vaquinha`** | Espécie brasileira, dano visual inconfundível | ~458 amostras | GBIF (adultos) |
+| **`milho_sadio`** | Classe negativa — permite responder "não tem nada aqui" | ~627 amostras | KaraAgro AI Maize (fotos de campo rotuladas *healthy*) |
+
+### Estrutura de Diretórios Esperada:
 ```text
 dataset/
-├── praga/       # Imagens contendo as pragas do milho
-└── saudavel/    # Imagens de folhas ou plantas sadias
+├── lagarta_cartucho/    # Spodoptera frugiperda
+├── lagarta_espiga/      # Helicoverpa zea
+├── vaquinha/            # Diabrotica speciosa
+├── milho_sadio/         # Folhas e plantas sadias de controle
+└── creditos.csv         # Auditoria com autor, licença e URL de cada imagem
 ```
 
-> **Coleta de Imagens:** Utilize o script `01_baixar_gbif.py` para coletar imagens de campo com licenças abertas (CC0 / CC-BY) e estágio biológico filtrado via API GBIF:
-> ```bash
-> # Teste rápido (baixa 5 fotos de amostra):
-> python 01_baixar_gbif.py --teste
->
-> # Download completo para a pasta dataset/praga (modo binário para o modelo):
-> python 01_baixar_gbif.py --max-por-classe 500 --saida dataset/praga --modo binario
->
-> # Ou organizado por subpastas de espécies (multiclasse):
-> python 01_baixar_gbif.py --max-por-classe 500 --saida dataset/bruto --modo subpastas
-> ```
-> O script salva automaticamente o arquivo de auditoria `creditos.csv` com autor, licença e URL de cada foto.
+### Scripts de Coleta e Preparação:
+
+#### 1. Download de Fotos de Campo via GBIF (`01_baixar_gbif.py`)
+Baixa ocorrências públicas com licença declarada e estágio larval filtrado:
+```bash
+# Teste rápido (baixa 5 fotos de cada praga):
+python 01_baixar_gbif.py --teste
+
+# Download completo para as pastas de pragas em dataset/:
+python 01_baixar_gbif.py --max-por-classe 500 --saida dataset --modo subpastas --incluir-nc
+```
+
+#### 2. Recorte de Anotações do KaraAgro AI Maize (`04_recortar_karaagro.py`)
+Recorta as caixas delimitadoras PASCAL VOC do dataset de Harvard Dataverse:
+```bash
+# Mapeia caixas de FAW para 'lagarta_cartucho' e amostras sadias para 'milho_sadio':
+python 04_recortar_karaagro.py --dir caminho_para_pasta_extraida/ --saida dataset/
+```
 
 ---
 
