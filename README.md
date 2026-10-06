@@ -131,6 +131,19 @@ python src/corn_pest_classifier/main.py
 ```
 Ao término das épocas, o arquivo otimizado `milho_pragas_model.tflite` será gerado na raiz.
 
+### 3. Testar o Motor de IA (.tflite)
+Para classificar fotos reais de campo e visualizar a distribuição de probabilidades:
+```bash
+# Testar uma foto específica:
+python testar_modelo.py caminho/para/foto.jpg
+
+# Testar exibindo janela gráfica com a foto e a predição:
+python testar_modelo.py caminho/para/foto.jpg --visual
+
+# Teste automático com amostras do dataset:
+python testar_modelo.py
+```
+
 ---
 
 ## ☁️ Treinamento no Google Colab
