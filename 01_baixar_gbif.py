@@ -30,11 +30,12 @@ except ImportError:
 
 GBIF = "https://api.gbif.org/v1"
 
-# Mapeamento das pragas do milho coletadas via GBIF
+# Mapeamento das classes do projeto coletadas via GBIF
 CLASSES_DEFAULT = {
     "lagarta_cartucho": "Spodoptera frugiperda",
     "lagarta_espiga": "Helicoverpa zea",
     "vaquinha": "Diabrotica speciosa",
+    "milho_sadio": "Zea mays",
 }
 
 # Estágios de vida: lagartas são larvas; vaquinha é o besouro adulto
