@@ -16,10 +16,17 @@ except ImportError:
 
 
 def build_dataset(dataset_dir: str | None = None):
-    target_dir = dataset_dir or DATASET_DIR
+    target_path = Path(dataset_dir or DATASET_DIR)
+
+    # Filtra e carrega estritamente as classes oficiais do projeto que existem no diretório
+    classes_oficiais_presentes = [
+        c for c in CLASS_NAMES if (target_path / c).is_dir()
+    ]
+    filtro_classes = classes_oficiais_presentes if classes_oficiais_presentes else None
 
     train_ds, val_ds = keras.utils.image_dataset_from_directory(
-        target_dir,
+        str(target_path),
+        class_names=filtro_classes,
         validation_split=0.2,
         subset="both",
         seed=1,
@@ -28,7 +35,7 @@ def build_dataset(dataset_dir: str | None = None):
     )
 
     class_names = getattr(train_ds, "class_names", [])
-    print(f"Classes identificadas no dataset ({len(class_names)}): {class_names}")
+    print(f"Classes ativas no dataset ({len(class_names)}): {class_names}")
     faltantes = [c for c in CLASS_NAMES if c not in class_names]
     if faltantes:
         print(
