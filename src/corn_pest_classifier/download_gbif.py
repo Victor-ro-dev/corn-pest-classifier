@@ -1,58 +1,36 @@
-import os
-import time
+#!/usr/bin/env python3
+"""
+download_gbif.py — Módulo utilitário para download de ocorrências e fotos de pragas do milho do GBIF.
+Permite execução direta ou importação de funções auxiliares pelo pipeline do projeto.
+"""
 
-import pandas as pd
-import requests
+import sys
+from pathlib import Path
 
-# Configurações de diretório
-ARQUIVO_GBIF = "dataset/0007043-260916113435855/multimedia.txt" # O arquivo extraído do zip
-DIRETORIO_SAIDA = "dataset/praga/"
-LIMITE_IMAGENS = 1000  # Limite para não lotar o HD no primeiro teste
+# Adiciona a raiz do projeto ao path caso necessário
+_root_dir = str(Path(__file__).resolve().parent.parent.parent)
+if _root_dir not in sys.path:
+    sys.path.insert(0, _root_dir)
 
-def baixar_imagens_gbif():
-    # Cria a pasta caso não exista
-    os.makedirs(DIRETORIO_SAIDA, exist_ok=True)
+try:
+    # Importa a lógica principal de 01_baixar_gbif.py
+    import importlib.util
+    _script_path = Path(_root_dir) / "01_baixar_gbif.py"
+    _spec = importlib.util.spec_from_file_location("gbif_downloader", _script_path)
+    if _spec and _spec.loader:
+        _mod = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        CLASSES_DEFAULT = _mod.CLASSES_DEFAULT
+        resolver_taxon_key = _mod.resolver_taxon_key
+        buscar_ocorrencias = _mod.buscar_ocorrencias
+        baixar_e_validar_imagem = _mod.baixar_e_validar_imagem
+        main = _mod.main
+except Exception as e:
+    print(f"[AVISO] Não foi possível carregar 01_baixar_gbif.py dinamicamente: {e}")
 
-    print(f"Lendo o arquivo {ARQUIVO_GBIF}...")
-    # O GBIF usa tabulação (\t) como separador em vez de vírgula
-    df = pd.read_csv(ARQUIVO_GBIF, sep="\t", usecols=["identifier", "format"])
-
-    # Filtrar apenas as linhas que são imagens (JPEG)
-    df_imagens = df[df["format"].str.contains("image/jpeg", na=False, case=False)]
-    urls = df_imagens["identifier"].dropna().tolist()
-
-    print(f"Encontradas {len(urls)} URLs de imagens. Iniciando download de até {LIMITE_IMAGENS} fotos...")
-
-    sucessos = 0
-    for i, url in enumerate(urls):
-        if sucessos >= LIMITE_IMAGENS:
-            break
-
-        try:
-            # Faz o download da imagem com um timeout de 10 segundos
-            resposta = requests.get(url, timeout=10)
-
-            # Se o link estiver quebrado (Erro 404, 403, etc), pula para o próximo
-            if resposta.status_code != 200:
-                continue
-
-            # Salva o arquivo em disco com um nome único (ex: img_0001.jpg)
-            nome_arquivo = os.path.join(DIRETORIO_SAIDA, f"img_{sucessos:04d}.jpg")
-            with open(nome_arquivo, "wb") as f:
-                f.write(resposta.content)
-
-            sucessos += 1
-            if sucessos % 50 == 0:
-                print(f"[{sucessos}/{LIMITE_IMAGENS}] imagens baixadas...")
-
-            # Pequena pausa para não derrubar o servidor de origem
-            time.sleep(0.1)
-
-        except Exception:
-            # Ignora erros de conexão ou timeout e continua
-            pass
-
-    print(f"Download concluído! {sucessos} imagens salvas em {DIRETORIO_SAIDA}.")
 
 if __name__ == "__main__":
-    baixar_imagens_gbif()
+    if "main" in locals():
+        main()
+    else:
+        print("Execute diretamente: python 01_baixar_gbif.py")

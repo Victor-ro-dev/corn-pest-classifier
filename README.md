@@ -84,7 +84,18 @@ dataset/
 └── saudavel/    # Imagens de folhas ou plantas sadias
 ```
 
-> **Dica:** O script `download_gbif.py` pode ser utilizado para baixar amostras públicas de ocorrências da fauna a partir dos metadados GBIF.
+> **Coleta de Imagens:** Utilize o script `01_baixar_gbif.py` para coletar imagens de campo com licenças abertas (CC0 / CC-BY) e estágio biológico filtrado via API GBIF:
+> ```bash
+> # Teste rápido (baixa 5 fotos de amostra):
+> python 01_baixar_gbif.py --teste
+>
+> # Download completo para a pasta dataset/praga (modo binário para o modelo):
+> python 01_baixar_gbif.py --max-por-classe 500 --saida dataset/praga --modo binario
+>
+> # Ou organizado por subpastas de espécies (multiclasse):
+> python 01_baixar_gbif.py --max-por-classe 500 --saida dataset/bruto --modo subpastas
+> ```
+> O script salva automaticamente o arquivo de auditoria `creditos.csv` com autor, licença e URL de cada foto.
 
 ---
 
