@@ -180,8 +180,8 @@ def main():
     parser.add_argument(
         "--max-por-classe",
         type=int,
-        default=500,
-        help="Quantidade máxima de imagens a serem baixadas por classe (padrão: 500)",
+        default=1500,
+        help="Quantidade máxima de imagens a serem baixadas por classe (padrão: 1500)",
     )
     parser.add_argument(
         "--saida",

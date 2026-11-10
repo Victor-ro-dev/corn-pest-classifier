@@ -12,9 +12,9 @@ import tensorflow as tf
 from tensorflow import keras
 
 try:
-    from corn_pest_classifier.data_loader import build_dataset
+    from corn_pest_classifier.data_loader import build_dataset, get_augmentation_pipeline
 except ImportError:
-    from data_loader import build_dataset
+    from data_loader import build_dataset, get_augmentation_pipeline
 
 
 def visualizar_lote():
@@ -69,12 +69,9 @@ def visualizar_lote():
         print(f"\n[OK] Imagem do lote salva em: {caminho_salvar_lote}")
 
         # -------------------------------------------------------------
-        # 2. Demonstração do Data Augmentation na 1ª imagem
+        # 2. Demonstração do Data Augmentation de Campo na 1ª imagem
         # -------------------------------------------------------------
-        data_augmentation = keras.Sequential([
-            keras.layers.RandomFlip("horizontal_and_vertical"),
-            keras.layers.RandomRotation(0.2),
-        ])
+        data_augmentation = get_augmentation_pipeline()
 
         fig_aug, axes_aug = plt.subplots(3, 3, figsize=(11, 11))
         fig_aug.suptitle("Efeito do Data Augmentation na mesma imagem (9 variações)", fontsize=14, fontweight="bold")

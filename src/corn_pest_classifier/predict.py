@@ -6,7 +6,14 @@ Pode ser importado por APIs (FastAPI, Flask) ou bots de mensageria (WhatsApp, Te
 from pathlib import Path
 import numpy as np
 from PIL import Image
-import tensorflow as tf
+try:
+    from ai_edge_litert.interpreter import Interpreter
+except ImportError:
+    try:
+        from tensorflow.lite.python.interpreter import Interpreter
+    except ImportError:
+        import tensorflow as tf
+        Interpreter = tf.lite.Interpreter
 
 from corn_pest_classifier.config import CLASS_NAMES
 
@@ -30,7 +37,7 @@ class CornPestClassifier:
             else:
                 raise FileNotFoundError(f"Modelo não encontrado em '{model_path}'.")
 
-        self.interpreter = tf.lite.Interpreter(model_path=str(caminho))
+        self.interpreter = Interpreter(model_path=str(caminho))
         self.interpreter.allocate_tensors()
 
         self.input_details = self.interpreter.get_input_details()
