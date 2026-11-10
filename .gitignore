@@ -1,7 +1,8 @@
 .DS_Store
 db.json
 .vscode
-dataset
+dataset/praga/
+dataset/saudavel/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

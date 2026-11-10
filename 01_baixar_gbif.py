@@ -13,15 +13,18 @@ Características:
 """
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import csv
 import io
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 
 import requests
-from PIL import Image
+from requests.adapters import HTTPAdapter
+from PIL import Image, ImageOps
 
 try:
     from tqdm import tqdm
@@ -137,32 +140,62 @@ def buscar_ocorrencias(
     return achados[:limite]
 
 
-def baixar_e_validar_imagem(url: str, destino: Path, timeout: int = 40) -> bool:
+_thread_local = threading.local()
+
+
+def _get_session() -> requests.Session:
+    """Retorna uma sessão HTTP reutilizável por thread (Keep-Alive / Connection Pool)."""
+    sess = getattr(_thread_local, "session", None)
+    if sess is None:
+        sess = requests.Session()
+        sess.headers.update(HEADERS)
+        adapter = HTTPAdapter(pool_connections=32, pool_maxsize=32, max_retries=2)
+        sess.mount("https://", adapter)
+        sess.mount("http://", adapter)
+        _thread_local.session = sess
+    return sess
+
+
+def baixar_e_validar_imagem(
+    url: str,
+    destino: Path,
+    timeout: int = 25,
+    max_dim: int = 320,
+) -> bool:
     """
-    Baixa uma imagem e valida sua integridade real usando Pillow.
-    Descarta downloads com erro, corrompidos ou com menos de 8 KB.
+    Baixa uma imagem em paralelo, valida sua integridade real usando Pillow e
+    redimensiona para no máximo `max_dim`x`max_dim` (JPEG otimizado), mantendo
+    margem ideal para a MobileNetV2 (224x224) e reduzindo o peso em ~80x para caber no Git.
     """
     try:
-        r = requests.get(url, headers=HEADERS, timeout=timeout, stream=True)
+        sess = _get_session()
+        r = sess.get(url, timeout=timeout)
         r.raise_for_status()
 
         ct = r.headers.get("Content-Type", "")
-        # Checa se o content-type retornado é de imagem (quando disponível)
         if ct and "image" not in ct and "octet-stream" not in ct:
             return False
 
         conteudo = r.content
-        if len(conteudo) < 8000:
+        if len(conteudo) < 4000:
             return False
 
-        # Validação da integridade real dos bytes da imagem usando Pillow
+        # Validação real e redimensionamento inteligente via Pillow
         try:
             with Image.open(io.BytesIO(conteudo)) as img:
-                img.verify()
+                img = ImageOps.exif_transpose(img)
+                img = img.convert("RGB")
+                if img.width < 96 or img.height < 96:
+                    return False
+                if max_dim and (img.width > max_dim or img.height > max_dim):
+                    img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=85, optimize=True)
+                dados_otimizados = buf.getvalue()
         except Exception:
             return False
 
-        destino.write_bytes(conteudo)
+        destino.write_bytes(dados_otimizados)
         return True
     except Exception:
         if destino.exists():
@@ -175,13 +208,25 @@ def baixar_e_validar_imagem(url: str, destino: Path, timeout: int = 40) -> bool:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Download de fotos de campo de pragas do milho a partir do GBIF"
+        description="Download paralelo de fotos de campo de pragas do milho a partir do GBIF"
     )
     parser.add_argument(
         "--max-por-classe",
         type=int,
-        default=1500,
-        help="Quantidade máxima de imagens a serem baixadas por classe (padrão: 1500)",
+        default=600,
+        help="Quantidade máxima de imagens a serem baixadas por classe (padrão: 600)",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=24,
+        help="Número de threads paralelas para download acelerado (padrão: 24)",
+    )
+    parser.add_argument(
+        "--max-dim",
+        type=int,
+        default=320,
+        help="Dimensão máxima (px) para redimensionar as imagens salvas (padrão: 320, 0 = original)",
     )
     parser.add_argument(
         "--saida",
@@ -231,7 +276,6 @@ def main():
     if args.creditos:
         creditos_path = Path(args.creditos)
     else:
-        # Se saída for dataset/praga, salva em dataset/creditos.csv para ficar no topo
         if raiz_saida.name == "praga":
             creditos_path = raiz_saida.parent / "creditos.csv"
         else:
@@ -259,15 +303,17 @@ def main():
             pass
 
     print("=" * 60)
-    print("[*] COLETOR DE IMAGENS GBIF - PRAGAS DO MILHO")
+    print("[*] COLETOR PARALELO DE IMAGENS GBIF - PRAGAS DO MILHO")
     print(f"Diretorio de saida: {raiz_saida.resolve()}")
     print(f"Modo de organizacao: {args.modo}")
-    print(f"Limite por classe: {limite} fotos")
+    print(f"Limite por classe: {limite} fotos | Workers paralelos: {args.workers}")
+    print(f"Redimensionamento automatico: {args.max_dim}x{args.max_dim}px (JPEG 85%)")
     print(f"Licencas permitidas: {licencas}")
     print(f"Registro de autoria: {creditos_path.resolve()}")
     print("=" * 60)
 
     total_geral_baixadas = 0
+    csv_lock = threading.Lock()
 
     with creditos_path.open("a", newline="", encoding="utf-8") as fcsv:
         w = csv.writer(fcsv)
@@ -300,7 +346,7 @@ def main():
                 print("  Sem filtro de estágio larval (espécie identificada pelo adulto)")
 
             print("  Buscando ocorrências públicas no GBIF...")
-            ocorrencias = buscar_ocorrencias(key, limite, life_stages, licencas)
+            ocorrencias = buscar_ocorrencias(key, int(limite * 1.15) + 20, life_stages, licencas)
             print(f"  {len(ocorrencias)} mídias candidatas encontradas.")
 
             if args.modo == "subpastas":
@@ -309,57 +355,77 @@ def main():
             else:
                 pasta_destino = raiz_saida
 
-            ok = 0
-            iterable = enumerate(ocorrencias)
-            bar = None
-            if tqdm:
-                bar = tqdm(total=min(limite, len(ocorrencias)), desc=f"Baixando {classe}")
+            # Conta arquivos já existentes no diretório
+            existentes = [
+                f for f in pasta_destino.glob("*.jpg") if f.is_file() and f.stat().st_size > 2000
+            ]
+            ok = len(existentes)
+            if ok >= limite:
+                print(f"  -> Já existem {ok} imagens válidas em '{pasta_destino}'. Pulando download!")
+                continue
 
-            for i, (occ_key, url, lic, autor) in iterable:
-                if ok >= limite:
-                    break
-
+            faltam = limite - ok
+            tarefas = []
+            for i, (occ_key, url, lic, autor) in enumerate(ocorrencias):
                 if url in urls_ja_registradas:
                     continue
-
                 if args.modo == "subpastas":
                     nome_arquivo = f"{occ_key}_{i}.jpg"
                 else:
                     nome_arquivo = f"{classe}_{occ_key}_{i}.jpg"
-
                 destino = pasta_destino / nome_arquivo
-
-                if destino.exists() and destino.stat().st_size > 8000:
-                    ok += 1
-                    if bar:
-                        bar.update(1)
+                if destino.exists() and destino.stat().st_size > 2000:
                     continue
+                tarefas.append((occ_key, url, lic, autor, destino))
 
-                if baixar_e_validar_imagem(url, destino):
-                    ok += 1
-                    total_geral_baixadas += 1
-                    w.writerow([
-                        str(destino.as_posix()),
-                        classe,
-                        "GBIF",
-                        str(occ_key),
-                        url,
-                        lic,
-                        autor,
-                    ])
-                    fcsv.flush()
-                    urls_ja_registradas.add(url)
-                    if bar:
-                        bar.update(1)
-                elif not bar and (i + 1) % 10 == 0:
-                    print(f"    Processadas {i + 1}/{len(ocorrencias)}... ({ok} fotos válidas salvas)")
+            alvo_barra = min(faltam, len(tarefas))
+            bar = tqdm(total=alvo_barra, desc=f"Baixando {classe} ({args.workers} threads)") if tqdm else None
+            novas_classe = 0
 
-                time.sleep(0.2)  # Respeito à taxa de requisições
+            def _worker(item):
+                occ_key_w, url_w, lic_w, autor_w, destino_w = item
+                sucesso = baixar_e_validar_imagem(url_w, destino_w, max_dim=args.max_dim)
+                return sucesso, occ_key_w, url_w, lic_w, autor_w, destino_w
+
+            with ThreadPoolExecutor(max_workers=args.workers) as pool:
+                # Submete em lotes controlados para parar assim que atingir o limite
+                futures = [pool.submit(_worker, t) for t in tarefas[: int(faltam * 1.25) + 15]]
+                for fut in as_completed(futures):
+                    if ok >= limite:
+                        for pendente in futures:
+                            pendente.cancel()
+                        break
+                    sucesso, occ_key_r, url_r, lic_r, autor_r, destino_r = fut.result()
+                    if sucesso:
+                        with csv_lock:
+                            if ok < limite:
+                                ok += 1
+                                novas_classe += 1
+                                total_geral_baixadas += 1
+                                w.writerow([
+                                    str(destino_r.as_posix()),
+                                    classe,
+                                    "GBIF",
+                                    str(occ_key_r),
+                                    url_r,
+                                    lic_r,
+                                    autor_r,
+                                ])
+                                fcsv.flush()
+                                urls_ja_registradas.add(url_r)
+                                if bar:
+                                    bar.update(1)
+                            else:
+                                # Excedente pós-limite: remove para manter exatamente o limite pedido
+                                try:
+                                    destino_r.unlink()
+                                except OSError:
+                                    pass
 
             if bar:
                 bar.close()
 
-            print(f"  -> Concluído: {ok} imagens salvas para '{classe}'.")
+            print(f"  -> Concluído: {ok} imagens prontas para '{classe}' (+{novas_classe} novas).")
 
     print("\n" + "=" * 60)
     print(f"[OK] Processamento finalizado! Total de novas imagens baixadas: {total_geral_baixadas}")
