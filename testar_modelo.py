@@ -14,11 +14,13 @@ Uso:
 """
 
 import argparse
+import base64
+import io
 import sys
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 
 try:
     import tensorflow as tf
@@ -71,21 +73,41 @@ class CornPestClassifier:
         self.target_height = self.input_shape[1]
         self.target_width = self.input_shape[2]
 
-    def preprocess(self, img_path: Path) -> np.ndarray:
-        """Carrega e redimensiona a imagem para o formato esperado pelo modelo."""
-        img = Image.open(img_path).convert("RGB")
+    def preprocess(self, img_input: str | bytes | Path) -> tuple[np.ndarray, str]:
+        """Carrega e redimensiona a imagem (de arquivo, bytes ou Base64 da Evolution API) para o formato esperado pelo modelo."""
+        if isinstance(img_input, (bytes, bytearray)):
+            img = ImageOps.exif_transpose(Image.open(io.BytesIO(img_input))).convert("RGB")
+            origem = "bytes_em_memoria"
+        elif isinstance(img_input, str) and (
+            img_input.strip().startswith(("data:image/", "/9j/", "iVBOR"))
+            or (len(img_input) > 256 and "/" not in img_input[:30] and "\\" not in img_input[:30])
+        ):
+            s = img_input.strip()
+            if "," in s and s.startswith("data:"):
+                s = s.split(",", 1)[1].strip()
+            s = "".join(s.split())
+            rem = len(s) % 4
+            if rem:
+                s += "=" * (4 - rem)
+            raw = base64.b64decode(s)
+            img = ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert("RGB")
+            origem = f"base64_evolution ({len(raw) / 1024:.1f} KB)"
+        else:
+            caminho = Path(img_input)
+            img = ImageOps.exif_transpose(Image.open(caminho)).convert("RGB")
+            origem = str(caminho)
+
         img_resized = img.resize((self.target_width, self.target_height), Image.Resampling.BILINEAR)
 
         # Converte para array float32 com valores de 0 a 255 (mesmo input do dataset)
         arr = np.array(img_resized, dtype=np.float32)
         # Adiciona dimensão do lote: (1, 224, 224, 3)
         arr = np.expand_dims(arr, axis=0)
-        return arr
+        return arr, origem
 
-    def predict(self, img_path: str | Path) -> dict:
-        """Executa a inferência e retorna as probabilidades por classe."""
-        caminho = Path(img_path)
-        tensor_entrada = self.preprocess(caminho)
+    def predict(self, img_input: str | bytes | Path) -> dict:
+        """Executa a inferência (aceita Path, bytes ou string Base64 da Evolution API) e retorna as probabilidades por classe."""
+        tensor_entrada, origem = self.preprocess(img_input)
 
         # Alimenta o tensor de entrada e roda o motor
         self.interpreter.set_tensor(self.input_details[0]["index"], tensor_entrada)
@@ -111,12 +133,16 @@ class CornPestClassifier:
             detalhes[nome] = float(p)
 
         return {
-            "arquivo": str(caminho),
+            "arquivo": origem,
             "classe": top_classe,
             "confianca": top_conf,
             "probabilidades": detalhes,
             "descricao": DESCRICOES.get(top_classe, ""),
         }
+
+    def predict_base64(self, base64_str: str) -> dict:
+        """Executa a inferência diretamente a partir de uma string Base64 da Evolution API."""
+        return self.predict(base64_str)
 
 
 def exibir_resultado(resultado: dict):
@@ -186,6 +212,11 @@ def main():
         action="store_true",
         help="Abre janela gráfica do matplotlib exibindo a foto e a predição",
     )
+    parser.add_argument(
+        "--base64",
+        action="store_true",
+        help="Simula envio da foto via webhook da Evolution API (codifica em data:image/jpeg;base64,... antes da inferência)",
+    )
 
     args = parser.parse_args()
 
@@ -202,13 +233,22 @@ def main():
         print(f"[ERRO] Falha ao carregar motor de IA: {e}")
         return
 
-    # Caso uma imagem específica tenha sido informada
+    # Caso uma imagem específica (ou string Base64 direta) tenha sido informada
     if args.imagem:
+        if args.imagem.strip().startswith(("data:image/", "/9j/", "iVBOR")):
+            res = motor.predict_base64(args.imagem)
+            exibir_resultado(res)
+            return
+
         caminho_foto = Path(args.imagem)
         if not caminho_foto.exists():
             print(f"[ERRO] Imagem não encontrada: {caminho_foto}")
             return
-        res = motor.predict(caminho_foto)
+        if args.base64:
+            b64_payload = "data:image/jpeg;base64," + base64.b64encode(caminho_foto.read_bytes()).decode("ascii")
+            res = motor.predict_base64(b64_payload)
+        else:
+            res = motor.predict(caminho_foto)
         exibir_resultado(res)
         if args.visual:
             plotar_resultado(caminho_foto, res)
@@ -241,7 +281,11 @@ def main():
     print(f"Encontradas {len(amostras_encontradas)} fotos para teste. Executando inferências:\n")
     for rotulo_real, foto in amostras_encontradas:
         print(f">>> Testando amostra da pasta: [{rotulo_real}]")
-        res = motor.predict(foto)
+        if args.base64:
+            b64_payload = "data:image/jpeg;base64," + base64.b64encode(foto.read_bytes()).decode("ascii")
+            res = motor.predict_base64(b64_payload)
+        else:
+            res = motor.predict(foto)
         exibir_resultado(res)
         if args.visual:
             plotar_resultado(foto, res)
